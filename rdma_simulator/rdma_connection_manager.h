@@ -4,6 +4,7 @@
 #include <vector>
 #include <memory>
 #include <unordered_map>
+#include <iostream> // 添加iostream头文件
 #include "rdma_device.h"
 
 class RdmaConnectionManager {
@@ -15,8 +16,13 @@ public:
         void* buffer;
         size_t buffer_size;
     };
-    
     RdmaConnectionManager(RdmaDevice& device, size_t max_connections = 1024);
+    // 修改构造函数，确保正确设置max_connections_
+    // RdmaConnectionManager(RdmaDevice& device, size_t max_connections = 1024)
+    //     : device_(device), max_connections_(max_connections) {
+    //     std::cout << "Initializing RdmaConnectionManager with max_connections=" 
+    //               << max_connections << std::endl;
+    // }
     
     // 批量建立连接
     std::vector<Connection> establish_connections(size_t count, 

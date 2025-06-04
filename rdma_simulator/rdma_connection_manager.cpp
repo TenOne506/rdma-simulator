@@ -14,22 +14,39 @@ RdmaConnectionManager::RdmaConnectionManager(RdmaDevice& device, size_t max_conn
 std::vector<RdmaConnectionManager::Connection> RdmaConnectionManager::establish_connections(
     size_t count, size_t buffer_size, uint32_t max_send_wr, uint32_t max_recv_wr, uint32_t max_cqe) {
     
+    std::cout << "Attempting to establish " << count << " connections" << std::endl;
+    std::cout << "Current active connections: " << active_connections() << std::endl;
+    std::cout << "Max connections allowed: " << max_connections_ << std::endl;
+
+    // 检查是否超过最大连接数限制
+    if (active_connections() + count > max_connections_) {
+        count = max_connections_ - active_connections();
+        std::cout << "Adjusting connection count to " << count 
+                  << " due to max connections limit" << std::endl;
+        if (count == 0) {
+            throw std::runtime_error("Cannot create more connections: max limit reached");
+        }
+    }
+
     std::vector<Connection> new_connections;
     new_connections.reserve(count);
 
     // 1. 批量创建CQ (每个连接一个CQ)
+    std::cout << "Creating " << count << " completion queues..." << std::endl;
     auto cq_nums = device_.create_cq_batch(count, max_cqe);
     if (cq_nums.empty()) {
-        throw std::runtime_error("Failed to create any completion queues");
+        throw std::runtime_error("Failed to create completion queues");
     }
+    std::cout << "Successfully created " << cq_nums.size() << " CQs" << std::endl;
 
     // 2. 批量创建QP (每个连接一个QP)
+    std::cout << "Creating " << count << " queue pairs..." << std::endl;
     auto qp_nums = device_.create_qp_batch(count, max_send_wr, max_recv_wr);
     if (qp_nums.empty()) {
-        // 回滚已创建的CQ
         device_.destroy_cq_batch(cq_nums);
-        throw std::runtime_error("Failed to create any queue pairs");
+        throw std::runtime_error("Failed to create queue pairs");
     }
+    std::cout << "Successfully created " << qp_nums.size() << " QPs" << std::endl;
 
     // 3. 准备内存区域
     std::vector<std::pair<void*, size_t>> regions;
@@ -67,39 +84,45 @@ std::vector<RdmaConnectionManager::Connection> RdmaConnectionManager::establish_
     }
 
     // 5. 创建连接结构
-    std::lock_guard<std::mutex> lock(connections_mutex_);
-    
-    size_t connections_created = 0;
-    try {
-        for (size_t i = 0; i < qp_nums.size(); ++i) {
-            if (connections_.size() >= max_connections_) {
-                std::cerr << "Warning: Reached max connections limit (" 
-                          << max_connections_ << ")" << std::endl;
-                break;
+    {
+        std::lock_guard<std::mutex> lock(connections_mutex_);
+        
+        size_t connections_created = 0;
+        try {
+            for (size_t i = 0; i < qp_nums.size(); ++i) {
+                if (connections_.size() >= max_connections_) {
+                    std::cout << "Warning: Reached max connections limit (" 
+                              << max_connections_ << ")" << std::endl;
+                    break;
+                }
+
+                Connection conn{
+                    .qp_num = qp_nums[i],
+                    .cq_num = cq_nums[i],
+                    .mr_key = mr_keys[i],
+                    .buffer = regions[i].first,
+                    .buffer_size = regions[i].second
+                };
+
+                connections_[qp_nums[i]] = conn;
+                new_connections.push_back(conn);
+                connections_created++;
             }
-
-            Connection conn{
-                .qp_num = qp_nums[i],
-                .cq_num = cq_nums[i],
-                .mr_key = mr_keys[i],
-                .buffer = regions[i].first,
-                .buffer_size = regions[i].second
-            };
-
-            connections_[qp_nums[i]] = conn;
-            new_connections.push_back(conn);
-            connections_created++;
+            
+            std::cout << "Successfully created " << connections_created 
+                      << " connections" << std::endl;
+            
+        } catch (...) {
+            // 回滚已添加的连接
+            for (size_t i = 0; i < connections_created; ++i) {
+                connections_.erase(qp_nums[i]);
+                free(regions[i].first);
+            }
+            device_.deregister_mr_batch(mr_keys);
+            device_.destroy_qp_batch(qp_nums);
+            device_.destroy_cq_batch(cq_nums);
+            throw;
         }
-    } catch (...) {
-        // 回滚已添加的连接
-        for (size_t i = 0; i < connections_created; ++i) {
-            connections_.erase(qp_nums[i]);
-            free(regions[i].first);
-        }
-        device_.deregister_mr_batch(mr_keys);
-        device_.destroy_qp_batch(qp_nums);
-        device_.destroy_cq_batch(cq_nums);
-        throw;
     }
 
     return new_connections;

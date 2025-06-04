@@ -100,13 +100,37 @@ RdmaCache::Stats RdmaDevice::get_cache_stats() const {
 }
 
 
+// 批量创建QP
+std::vector<uint32_t> RdmaDevice::create_qp_batch(size_t count, uint32_t max_send_wr, uint32_t max_recv_wr) {
+    std::vector<uint32_t> qp_nums;
+    qp_nums.reserve(count);
+    
+    //std::lock_guard<std::mutex> lock(device_mutex_);
+    
+    for (size_t i = 0; i < count; ++i) {
+        if (current_connections_ > max_connections_) {
+            std::cerr << "Warning: Reached max connections (" << max_connections_ 
+                      << "), cannot create more QPs" << std::endl;
+            break;
+        }
+        
+        uint32_t qp_num = next_qp_num_++;
+        auto qp = std::make_unique<RdmaQueuePair>(qp_num, max_send_wr, max_recv_wr);
+        qps_[qp_num] = std::move(qp);
+        current_connections_++;
+        qp_nums.push_back(qp_num);
+    }
+    
+    return qp_nums;
+}
+
 std::vector<uint32_t> RdmaDevice::create_cq_batch(size_t count, uint32_t max_cqe) {
     std::vector<uint32_t> cq_nums;
     cq_nums.reserve(count);
     
     for (size_t i = 0; i < count; ++i) {
         // 检查是否达到最大连接限制
-        if (current_connections_ >= max_connections_) {
+        if (current_connections_ > max_connections_) {
             std::cerr << "Warning: Reached maximum connections limit (" 
                       << max_connections_ << "), cannot create more CQs." << std::endl;
             break;
@@ -120,7 +144,7 @@ std::vector<uint32_t> RdmaDevice::create_cq_batch(size_t count, uint32_t max_cqe
         }
         
         cq_nums.push_back(cq_num);
-        current_connections_++;
+        //current_connections_++;
     }
     
     return cq_nums;
@@ -134,7 +158,7 @@ std::vector<uint32_t> RdmaDevice::register_mr_batch(
     
     for (const auto& region : regions) {
         // 检查是否达到最大连接限制
-        if (current_connections_ >= max_connections_) {
+        if (current_connections_ > max_connections_) {
             std::cerr << "Warning: Reached maximum connections limit (" 
                       << max_connections_ << "), cannot register more MRs." << std::endl;
             break;
@@ -156,7 +180,7 @@ std::vector<uint32_t> RdmaDevice::register_mr_batch(
         }
         
         mr_keys.push_back(mr_key);
-        current_connections_++;
+        //current_connections_++;
     }
     
     return mr_keys;

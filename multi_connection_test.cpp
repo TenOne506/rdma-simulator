@@ -45,13 +45,14 @@ void worker_thread(RdmaConnectionManager& manager,
 }
 
 int main() {
+    //asm volatile("int3;");  // 硬件断点
     RdmaDevice device;
     device.start_network_thread();
     
     // 设置最大连接数
     device.set_max_connections(NUM_CONNECTIONS);
     
-    RdmaConnectionManager manager(device);
+    RdmaConnectionManager manager(device,NUM_CONNECTIONS);
     
     std::cout << "Establishing " << NUM_CONNECTIONS << " RDMA connections..." << std::endl;
     auto start = std::chrono::high_resolution_clock::now();
