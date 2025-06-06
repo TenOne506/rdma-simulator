@@ -5,11 +5,17 @@
 #include <map>
 #include <thread>
 #include <mutex>
+#include <atomic>
+#include <vector>
 #include "rdma_cache.h"
 #include "rdma_monitor.h"
 #include "rdma_queue_pair.h"
 #include "rdma_completion_queue.h"
 #include "rdma_memory_region.h"
+
+// Forward declarations
+struct RdmaWorkRequest;
+struct RdmaCompletion;
 
 /**
  * @brief RDMA设备类，模拟RDMA网卡(RNIC)的功能

@@ -24,7 +24,7 @@ std::shared_ptr<RdmaMemoryRegion> RdmaPD::register_memory(void* addr, size_t len
     // 创建新的内存区域
     static uint32_t next_lkey = 1;
     static uint32_t next_rkey = 1;
-    auto mr = std::make_shared<RdmaMemoryRegion>(addr, length, next_lkey++, next_rkey++);
+    auto mr = std::make_shared<RdmaMemoryRegion>(addr, length, next_lkey++, next_rkey++, access_flags);
     
     // 将MR添加到PD的MR列表中
     memory_regions_.push_back(mr);

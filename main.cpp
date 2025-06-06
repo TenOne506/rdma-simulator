@@ -73,7 +73,7 @@ void demonstrate_cache_operations(RdmaDevice& device) {
     
     // 修改QP状态
     if (auto qp = device.get_qp(qp_num)) {
-        qp->modify_to_rtr();
+        qp->modify_to_rtr(qp_num, 1, 4096);
         qp->modify_to_rts();
     }
     
