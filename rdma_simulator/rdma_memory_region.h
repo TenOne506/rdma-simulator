@@ -11,7 +11,8 @@ public:
     size_t length() const;
     uint32_t lkey() const;
     uint32_t rkey() const;
-
+    uint32_t get_lkey() const;
+    uint32_t get_rkey() const;
 private:
     void* addr_;
     size_t length_;

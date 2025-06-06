@@ -1,4 +1,5 @@
 #include "rdma_device.h"
+#include "rdma_cache.h"
 #include <iostream>
 #include <random>
 #include <chrono>
@@ -72,7 +73,7 @@ void RdmaDevice::network_processing_loop() {
                 
                 // 检查缓存
                 if (wr.op_type == RdmaOpType::READ || wr.op_type == RdmaOpType::WRITE) {
-                    if (cache_.contains(wr.remote_addr)) {
+                    if (cache_.contains(RdmaCache::MR, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(wr.remote_addr)))) {
                         // 缓存命中，可以优化操作
                     }
                 }
@@ -88,11 +89,18 @@ void RdmaDevice::network_processing_loop() {
 
 // 添加新的缓存相关方法
 void RdmaDevice::cache_put(void* addr, const void* data, size_t size, uint32_t lkey) {
-    cache_.put(addr, data, size, lkey);
+    cache_.put(RdmaCache::MR, lkey, data, size);
 }
 
 bool RdmaDevice::cache_get(void* addr, void* buffer, size_t size) {
-    return cache_.get(addr, buffer, size);
+    // 查找对应的MR
+    for (const auto& mr_pair : mrs_) {
+        if (mr_pair.second->addr() == addr) {
+            // 使用MR的lkey进行缓存查找
+            return cache_.get(RdmaCache::MR, mr_pair.second->lkey(), buffer, size);
+        }
+    }
+    return false;
 }
 
 RdmaCache::Stats RdmaDevice::get_cache_stats() const {

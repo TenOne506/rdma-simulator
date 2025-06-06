@@ -6,9 +6,9 @@
 #include <random>
 #include "rdma_simulator/rdma_connection_manager.h"
 
-constexpr size_t NUM_CONNECTIONS = 1024;
+constexpr size_t NUM_CONNECTIONS = 2048;
 constexpr size_t BUFFER_SIZE = 4096; // 4KB per connection
-constexpr size_t THREADS = 16;       // 16个工作线程
+constexpr size_t THREADS = 32;       // 16个工作线程
 
 std::atomic<uint64_t> total_sends{0};
 std::atomic<uint64_t> total_recvs{0};
@@ -86,7 +86,7 @@ int main() {
     }
     
     // 启动工作线程
-    const size_t OPS_PER_CONNECTION = 100; // 每个连接执行100次操作
+    const size_t OPS_PER_CONNECTION = 1000; // 每个连接执行100次操作
     std::vector<std::thread> workers;
     
     std::cout << "Starting " << THREADS << " worker threads..." << std::endl;

@@ -7,3 +7,6 @@ void* RdmaMemoryRegion::addr() const { return addr_; }
 size_t RdmaMemoryRegion::length() const { return length_; }
 uint32_t RdmaMemoryRegion::lkey() const { return lkey_; }
 uint32_t RdmaMemoryRegion::rkey() const { return rkey_; }
+
+uint32_t RdmaMemoryRegion::get_lkey() const { return lkey_; }
+uint32_t RdmaMemoryRegion::get_rkey() const { return rkey_; }

@@ -6,6 +6,7 @@
 #include <thread>
 #include <mutex>
 #include "rdma_cache.h"
+#include "rdma_monitor.h"
 #include "rdma_queue_pair.h"
 #include "rdma_completion_queue.h"
 #include "rdma_memory_region.h"
@@ -148,6 +149,10 @@ public:
     // 批量注销MR
     void deregister_mr_batch(const std::vector<uint32_t>& mr_keys);
     
+     // 添加监控接口
+    const RdmaMonitor& get_monitor() const { return monitor_; }
+    RdmaMonitor& get_monitor() { return monitor_; }
+    
 private:
     /**
      * @brief 网络处理循环函数
@@ -170,6 +175,8 @@ private:
 
     size_t max_connections_ = 1024; // 默认支持1024连接
     std::atomic<size_t> current_connections_{0};
+
+    RdmaMonitor monitor_;  ///< RDMA操作监控系统
 };
 
 #endif // RDMA_DEVICE_H
