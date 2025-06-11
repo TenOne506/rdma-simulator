@@ -7,6 +7,8 @@
 #include <mutex>
 #include <atomic>
 #include <vector>
+#include <chrono>
+#include <functional>
 #include "rdma_cache.h"
 #include "rdma_monitor.h"
 #include "rdma_queue_pair.h"
@@ -17,6 +19,122 @@
 struct RdmaWorkRequest;
 struct RdmaCompletion;
 
+// 添加QP状态枚举
+enum class QPState {
+    RESET,
+    INIT,
+    RTR,
+    RTS
+};
+
+// 添加连接状态枚举
+enum class ConnectionState {
+    DISCONNECTED,
+    CONNECTING,
+    CONNECTED,
+    ERROR
+};
+
+// 添加QP属性结构体
+struct QPAttributes {
+    uint32_t qp_access_flags;
+    uint8_t pkey_index;
+    uint8_t port_num;
+    uint32_t max_send_wr;
+    uint32_t max_recv_wr;
+    uint32_t max_send_sge;
+    uint32_t max_recv_sge;
+    uint32_t max_rd_atomic;
+    uint32_t max_dest_rd_atomic;
+};
+
+// 添加连接消息类型枚举
+enum class ConnectionMessageType {
+    REQ,
+    REP,
+    RTR,
+    RTS,
+    REJ
+};
+
+// 添加连接消息结构体
+struct ConnectionMessage {
+    ConnectionMessageType type;
+    uint32_t qp_num;
+    QPAttributes qp_attr;
+    uint32_t timeout_ms;
+    uint32_t remote_mr_key;
+    uint64_t remote_addr;
+    uint16_t remote_lid;
+    uint8_t remote_gid[16];
+};
+
+// 添加缺失的类型定义
+struct RdmaQPInfo {
+    uint32_t qp_num;
+    uint32_t qp_access_flags;
+    uint8_t pkey_index;
+    uint8_t port_num;
+    uint8_t gid[16];
+};
+
+enum class RdmaControlMsgType {
+    CONNECT_REQ,
+    CONNECT_RESP,
+    READY,
+    ERROR
+};
+
+struct RdmaControlMsg {
+    struct {
+        RdmaControlMsgType type;
+        uint32_t size;
+    } header;
+    std::vector<uint8_t> payload;
+};
+
+// 添加RdmaControlChannel的完整定义
+class RdmaControlChannel {
+public:
+    RdmaControlChannel() = default;
+    virtual ~RdmaControlChannel() = default;
+
+    bool start_server(uint16_t port) {
+        // TODO: 实现服务器启动逻辑
+        return true;
+    }
+
+    bool connect_to_server(const std::string& server_ip, uint16_t port) {
+        // TODO: 实现客户端连接逻辑
+        return true;
+    }
+
+    bool send_connect_request(const RdmaQPInfo& qp_info) {
+        // TODO: 实现发送连接请求逻辑
+        return true;
+    }
+
+    bool send_connect_response(const RdmaQPInfo& qp_info, bool accept) {
+        // TODO: 实现发送连接响应逻辑
+        return true;
+    }
+
+    bool send_ready() {
+        // TODO: 实现发送就绪消息逻辑
+        return true;
+    }
+
+    bool send_error(const std::string& error) {
+        // TODO: 实现发送错误消息逻辑
+        return true;
+    }
+
+    bool receive_message(RdmaControlMsg& msg, uint32_t timeout_ms) {
+        // TODO: 实现接收消息逻辑
+        return true;
+    }
+};
+
 /**
  * @brief RDMA设备类，模拟RDMA网卡(RNIC)的功能
  * 
@@ -25,149 +143,127 @@ struct RdmaCompletion;
  */
 class RdmaDevice {
 public:
+    // 添加连接结构体定义
+    struct Connection {
+        uint32_t qp_num;
+        uint32_t cq_num;
+        uint32_t mr_key;
+        void* buffer;
+        size_t buffer_size;
+        QPState state;
+        uint32_t remote_qp_num;
+        uint32_t remote_mr_key;
+        void* remote_addr;
+        uint16_t remote_lid;
+        uint8_t remote_gid[16];
+        ConnectionState conn_state;
+        std::chrono::system_clock::time_point last_activity;
+        size_t bytes_sent;
+        size_t bytes_received;
+        size_t error_count;
+        std::unique_ptr<RdmaControlChannel> control_channel;
+    };
+
+    // 添加回调函数类型定义
+    using ConnectionCallback = std::function<void(uint32_t, ConnectionState)>;
+    using DataCallback = std::function<void(uint32_t, const void*, size_t)>;
+    using ErrorCallback = std::function<void(uint32_t, const std::string&)>;
+
     /**
      * @brief 构造函数，初始化RDMA设备
-     * 
-     * 初始化资源计数器、创建缓存系统，并准备网络处理线程
      */
     RdmaDevice();
 
     /**
      * @brief 析构函数，清理RDMA设备资源
-     * 
-     * 停止网络处理线程，释放所有已分配的RDMA资源
      */
     ~RdmaDevice();
     
-    /**
-     * @brief 创建队列对(Queue Pair)
-     * 
-     * @param max_send_wr 发送工作请求队列的最大长度
-     * @param max_recv_wr 接收工作请求队列的最大长度
-     * @return uint32_t 返回新创建的QP编号
-     */
+    // 基本资源管理函数
     uint32_t create_qp(uint32_t max_send_wr, uint32_t max_recv_wr);
-
-    /**
-     * @brief 创建完成队列(Completion Queue)
-     * 
-     * @param max_cqe 完成队列的最大条目数
-     * @return uint32_t 返回新创建的CQ编号
-     */
     uint32_t create_cq(uint32_t max_cqe);
-
-    /**
-     * @brief 注册内存区域(Memory Region)
-     * 
-     * @param addr 要注册的内存区域起始地址
-     * @param length 要注册的内存区域长度
-     * @return uint32_t 返回新注册的MR的本地密钥(lkey)
-     */
     uint32_t register_mr(void* addr, size_t length);
-    
-    /**
-     * @brief 获取指定编号的队列对
-     * 
-     * @param qp_num QP编号
-     * @return RdmaQueuePair* 返回QP指针，如果不存在则返回nullptr
-     */
     RdmaQueuePair* get_qp(uint32_t qp_num);
-
-    /**
-     * @brief 获取指定编号的完成队列
-     * 
-     * @param cq_num CQ编号
-     * @return RdmaCompletionQueue* 返回CQ指针，如果不存在则返回nullptr
-     */
     RdmaCompletionQueue* get_cq(uint32_t cq_num);
-
-    /**
-     * @brief 获取指定本地密钥的内存区域
-     * 
-     * @param lkey 内存区域的本地密钥
-     * @return RdmaMemoryRegion* 返回MR指针，如果不存在则返回nullptr
-     */
     RdmaMemoryRegion* get_mr(uint32_t lkey);
-    
-    /**
-     * @brief 启动网络处理线程
-     * 
-     * 创建并启动后台线程，用于处理RDMA网络请求和完成事件。
-     * 该线程会持续运行直到调用stop_network_thread()
-     */
-    void start_network_thread();
 
-    /**
-     * @brief 停止网络处理线程
-     * 
-     * 安全地停止网络处理线程，确保所有pending的操作都被正确处理
-     */
+    // 网络线程管理
+    void start_network_thread();
     void stop_network_thread();
 
-    /**
-     * @brief 将数据写入缓存
-     * 
-     * @param addr 目标内存地址
-     * @param data 源数据指针
-     * @param size 数据大小
-     * @param lkey 内存区域的本地密钥
-     */
+    // 缓存操作
     void cache_put(void* addr, const void* data, size_t size, uint32_t lkey);
-
-    /**
-     * @brief 从缓存读取数据
-     * 
-     * @param addr 源内存地址
-     * @param buffer 目标缓冲区
-     * @param size 要读取的数据大小
-     * @return bool 如果缓存命中返回true，否则返回false
-     */
     bool cache_get(void* addr, void* buffer, size_t size);
+    Stats get_cache_stats() const;
 
-    /**
-     * @brief 获取缓存统计信息
-     * 
-     * @return RdmaCache::Stats 返回包含命中率等统计信息的结构体
-     */
-    RdmaCache::Stats get_cache_stats() const;
-    
-    // 批量创建QP
+    // 批量操作
     std::vector<uint32_t> create_qp_batch(size_t count, uint32_t max_send_wr, uint32_t max_recv_wr);
-    
-    // 批量创建CQ
     std::vector<uint32_t> create_cq_batch(size_t count, uint32_t max_cqe);
-    
-    // 批量注册内存区域
     std::vector<uint32_t> register_mr_batch(const std::vector<std::pair<void*, size_t>>& regions);
-    
-    // 获取设备连接数
-    size_t connection_count() const;
-    
-    // 设置最大连接数
-    void set_max_connections(size_t max_conn);
-
-    // 批量删除QP
     void destroy_qp_batch(const std::vector<uint32_t>& qp_nums);
-    
-    // 批量删除CQ
     void destroy_cq_batch(const std::vector<uint32_t>& cq_nums);
-    
-    // 批量注销MR
     void deregister_mr_batch(const std::vector<uint32_t>& mr_keys);
-    
-     // 添加监控接口
+
+    // 连接管理
+    size_t connection_count() const;
+    void set_max_connections(size_t max_conn);
+    std::vector<Connection> establish_connections(
+        size_t count, size_t buffer_size, uint32_t max_send_wr, uint32_t max_recv_wr, uint32_t max_cqe);
+    Connection get_connection(uint32_t qp_num) const;
+    void close_connection(uint32_t qp_num);
+    bool establish_rc_connection(uint32_t qp_num, 
+                               const std::string& remote_addr,
+                               uint16_t remote_port,
+                               const QPAttributes& qp_attr,
+                               uint32_t timeout_ms);
+    bool establish_rdma_connection(uint32_t qp_num, 
+                                 const std::string& remote_addr,
+                                 uint16_t remote_port,
+                                 uint32_t timeout_ms);
+    bool init_qp(uint32_t qp_num, uint32_t cq_num);
+
+    // 数据收发
+    void post_send_batch(const std::vector<std::pair<uint32_t, std::vector<char>>>& send_requests);
+    void post_recv_batch(const std::vector<uint32_t>& qp_nums);
+    bool send_data(uint32_t qp_num, const void* data, size_t length, bool should_wait_for_completion);
+    bool receive_data(uint32_t qp_num, void* buffer, size_t buffer_size, 
+                     size_t& received_length, uint32_t timeout_ms);
+
+    // 状态管理
+    QPState get_qp_state(uint32_t qp_num) const;
+    void validate_qp_state(uint32_t qp_num, QPState required_state) const;
+    void modify_qp_state(uint32_t qp_num, QPState new_state);
+    ConnectionState get_connection_state(uint32_t qp_num) const;
+    void update_connection_state(uint32_t qp_num, ConnectionState new_state);
+
+    // 回调注册
+    void register_connection_callback(ConnectionCallback callback);
+    void register_data_callback(DataCallback callback);
+    void register_error_callback(ErrorCallback callback);
+
+    // 通知函数
+    void notify_connection_state_change(uint32_t qp_num, ConnectionState state);
+    void notify_data_received(uint32_t qp_num, const void* data, size_t length);
+    void notify_error(uint32_t qp_num, const std::string& error);
+
+    // 完成事件处理
+    bool wait_for_completion(uint32_t qp_num, uint32_t timeout_ms);
+    bool poll_completion(uint32_t qp_num, uint32_t timeout_ms);
+
+    // 辅助函数
+    uint64_t get_next_wr_id() { return next_wr_id_++; }
+
+    // 监控接口
     const RdmaMonitor& get_monitor() const { return monitor_; }
     RdmaMonitor& get_monitor() { return monitor_; }
-    
-private:
-    /**
-     * @brief 网络处理循环函数
-     * 
-     * 在单独的线程中运行，负责处理RDMA网络请求、
-     * 生成完成事件并更新相关资源状态
-     */
-    void network_processing_loop();
 
+private:
+    // 互斥锁声明
+    mutable std::mutex connections_mutex_;
+    mutable std::mutex callbacks_mutex_;
+    mutable std::mutex connection_protocol_mutex_;
+
+    // 其他成员变量
     uint32_t next_qp_num_;      ///< 下一个可用的QP编号
     uint32_t next_cq_num_;      ///< 下一个可用的CQ编号
     uint32_t next_mr_key_;      ///< 下一个可用的MR密钥
@@ -176,13 +272,22 @@ private:
     std::map<uint32_t, std::unique_ptr<RdmaMemoryRegion>> mrs_;     ///< 内存区域映射表，键为本地密钥
     std::thread network_thread_;  ///< 网络处理线程
     bool stop_network_;           ///< 网络线程停止标志
-
     RdmaCache cache_;  ///< RDMA缓存系统，用于优化内存访问性能
-
     size_t max_connections_ = 1024; // 默认支持1024连接
     std::atomic<size_t> current_connections_{0};
-
     RdmaMonitor monitor_;  ///< RDMA操作监控系统
+
+    // 连接相关成员
+    std::map<uint32_t, Connection> connections_;
+    std::vector<ConnectionCallback> connection_callbacks_;
+    std::vector<DataCallback> data_callbacks_;
+    std::vector<ErrorCallback> error_callbacks_;
+    std::map<uint32_t, QPAttributes> qp_attributes_;
+    std::map<uint32_t, uint32_t> connection_retry_counts_;
+    std::atomic<uint64_t> next_wr_id_{1};
+
+    // 私有辅助函数
+    void network_processing_loop();
 };
 
 #endif // RDMA_DEVICE_H

@@ -5,7 +5,7 @@
 #include <cstring>
 #include "rdma_simulator/rdma_device.h"
 
-void print_cache_stats(const RdmaCache::Stats& stats) {
+void print_cache_stats(const Stats& stats) {
     std::cout << "\n=== Cache Statistics ===" << std::endl;
     std::cout << "Hits: " << stats.hits << std::endl;
     std::cout << "Misses: " << stats.misses << std::endl;

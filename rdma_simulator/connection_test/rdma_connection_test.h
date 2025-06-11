@@ -24,6 +24,14 @@ public:
         uint64_t total_errors{0};
         std::chrono::system_clock::time_point start_time;
         std::chrono::system_clock::time_point end_time;
+        
+        // 新增性能指标
+        std::chrono::milliseconds total_connection_time{0};  // 总连接建立时间
+        std::chrono::milliseconds total_operation_time{0};   // 总操作时间
+        uint64_t connection_timeouts{0};                     // 连接超时次数
+        uint64_t operation_timeouts{0};                      // 操作超时次数
+        std::vector<std::chrono::milliseconds> connection_times;  // 每个连接的建立时间
+        std::vector<std::chrono::milliseconds> operation_times;   // 每个连接的操作时间
     };
 
     RdmaConnectionTest(size_t num_connections = 512, 
